@@ -1,0 +1,5 @@
+ultralytics
+Pillow
+streamlit
+numpy
+opencv-python
