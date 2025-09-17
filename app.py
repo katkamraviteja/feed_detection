@@ -1,4 +1,5 @@
 import streamlit as st
+from ultralytics import YOLO
 import sys
 import os
 
@@ -26,6 +27,12 @@ from PIL import Image
 import numpy as np
 import json
 
+# Load trained YOLO model
+@st.cache_resource
+def load_model():
+    return YOLO("feed_50epochs.pt")
+
+model = load_model()
 # Page config
 st.set_page_config(
     page_title="Shrimp Feed Classifier",
@@ -35,43 +42,85 @@ st.set_page_config(
 
 st.title("🦐 Shrimp Feed Classification - YOLO Model")
 
+# Upload single or multiple images
+uploaded_files = st.file_uploader(
+    "Upload image(s) for classification",
+    type=["jpg", "jpeg", "png"],
+    accept_multiple_files=False  # 👈 allow only one image at a time
+)
 # Try to import YOLO
 YOLO, error_msg = safe_import_yolo()
 
-# Show current environment info for debugging
-with st.expander("🔍 Debug Information"):
-    st.write("**Python version:**", sys.version)
-    st.write("**Installed packages:**")
-    try:
-        import subprocess
-        result = subprocess.run([sys.executable, "-m", "pip", "list"], 
-                              capture_output=True, text=True)
-        st.code(result.stdout)
-    except:
-        st.write("Could not retrieve package list")
+if YOLO is None:
+    st.error(f"❌ Failed to import YOLO: {error_msg}")
+    st.warning("**Troubleshooting steps:**")
+    st.code("""
+# 1. Make sure your requirements.txt contains:
+opencv-python-headless==4.8.1.78
+ultralytics
 
-st.stop()
+# 2. Make sure it does NOT contain:
+opencv-python
+opencv-contrib-python
+
+if uploaded_files:
+    results_list = []
+# 3. Try creating a packages.txt file with:
+freeglut3-dev
+libgtk2.0-dev
+    """)
+    
+    # Show current environment info for debugging
+    with st.expander("🔍 Debug Information"):
+        st.write("**Python version:**", sys.version)
+        st.write("**Installed packages:**")
+        try:
+            import subprocess
+            result = subprocess.run([sys.executable, "-m", "pip", "list"], 
+                                  capture_output=True, text=True)
+            st.code(result.stdout)
+        except:
+            st.write("Could not retrieve package list")
+    
+    st.stop()
 
 # Load model
 @st.cache_resource
 def load_model():
     try:
-        model = YOLO("feed_50epochs.pt")
+        # Open image
+        image = Image.open(uploaded_files).convert("RGB")
+        model = YOLO("classify_feed.pt")
         return model, None
     except FileNotFoundError:
         return None, "Model file 'classify_feed.pt' not found. Please upload it to your repository."
     except Exception as e:
         return None, f"Error loading model: {str(e)}"
 
+        # Show input image in Streamlit
+        st.image(image, caption=f"Uploaded: {uploaded_files.name}", use_column_width=True)
 model, model_error = load_model()
 
+        # Run YOLO prediction
+        results = model.predict(source=np.array(image), save=False, verbose=False)
 if model is None:
     st.error(f"❌ {model_error}")
     st.info("Make sure the 'classify_feed.pt' file is in the root of your GitHub repository.")
     st.stop()
 
+        for r in results:
+            probs = r.probs
+            top_idx = probs.top1
+            top_conf = probs.top1conf.item()
+            top_class = model.names[top_idx]
 st.success("✅ YOLO model loaded successfully!")
 
+            # Create JSON result (only for this image)
+            results_list.append({
+                "filename": uploaded_files.name,
+                "predicted_class": top_class,
+                "confidence": round(top_conf, 2)
+            })
 # File uploader
 uploaded_file = st.file_uploader(
     "Upload an image for classification",
@@ -79,6 +128,25 @@ uploaded_file = st.file_uploader(
     help="Upload a shrimp feed image to classify"
 )
 
+    except Exception as e:
+        results_list.append({
+            "filename": uploaded_files.name,
+            "error": str(e)
+        })
+
+    # Convert results to JSON
+    results_json = json.dumps(results_list, indent=4)
+
+    st.subheader("📄 JSON Results")
+    st.code(results_json, language="json")
+
+    # Download JSON
+    st.download_button(
+        label="📥 Download JSON Results",
+        data=results_json,
+        file_name="predictions.json",
+        mime="application/json"
+    )
 if uploaded_file is not None:
     col1, col2 = st.columns([1, 1])
     
@@ -135,4 +203,3 @@ if uploaded_file is not None:
 # Footer
 st.markdown("---")
 st.markdown("*Powered by YOLOv8 and Streamlit*")
-
