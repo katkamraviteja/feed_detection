@@ -38,42 +38,25 @@ st.title("🦐 Shrimp Feed Classification - YOLO Model")
 # Try to import YOLO
 YOLO, error_msg = safe_import_yolo()
 
-if YOLO is None:
-    st.error(f"❌ Failed to import YOLO: {error_msg}")
-    st.warning("**Troubleshooting steps:**")
-    st.code("""
-# 1. Make sure your requirements.txt contains:
-opencv-python-headless==4.8.1.78
-ultralytics
+# Show current environment info for debugging
+with st.expander("🔍 Debug Information"):
+    st.write("**Python version:**", sys.version)
+    st.write("**Installed packages:**")
+    try:
+        import subprocess
+        result = subprocess.run([sys.executable, "-m", "pip", "list"], 
+                              capture_output=True, text=True)
+        st.code(result.stdout)
+    except:
+        st.write("Could not retrieve package list")
 
-# 2. Make sure it does NOT contain:
-opencv-python
-opencv-contrib-python
-
-# 3. Try creating a packages.txt file with:
-freeglut3-dev
-libgtk2.0-dev
-    """)
-    
-    # Show current environment info for debugging
-    with st.expander("🔍 Debug Information"):
-        st.write("**Python version:**", sys.version)
-        st.write("**Installed packages:**")
-        try:
-            import subprocess
-            result = subprocess.run([sys.executable, "-m", "pip", "list"], 
-                                  capture_output=True, text=True)
-            st.code(result.stdout)
-        except:
-            st.write("Could not retrieve package list")
-    
-    st.stop()
+st.stop()
 
 # Load model
 @st.cache_resource
 def load_model():
     try:
-        model = YOLO("classify_feed.pt")
+        model = YOLO("feed_50epochs.pt")
         return model, None
     except FileNotFoundError:
         return None, "Model file 'classify_feed.pt' not found. Please upload it to your repository."
@@ -152,3 +135,4 @@ if uploaded_file is not None:
 # Footer
 st.markdown("---")
 st.markdown("*Powered by YOLOv8 and Streamlit*")
+
